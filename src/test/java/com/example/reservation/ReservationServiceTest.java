@@ -5,10 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
@@ -17,8 +14,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReservationService - Mocking Testy cz.2")
@@ -143,6 +139,27 @@ public class ReservationServiceTest {
             verify(eventPublisher).publish(eventTypeCaptor.capture(), eventDetailsCaptor.capture());
             assertThat(eventTypeCaptor.getValue()).isEqualTo(expectedType);
             assertThat(eventDetailsCaptor.getValue()).isEqualTo(expectedDetails);
+        }
+    }
+
+    @Nested
+    @DisplayName("InOrder - weryfikacja kolejności operacji")
+    class InOrderTests {
+
+        @Test
+        @DisplayName("Wykonywanie operacji w odpowiedniej kolejności")
+        void shouldExecuteOperationsInOrder() {
+            createSuccessfulReservation();
+
+            InOrder inOrder = inOrder(roomRepository, reservationRepository, codeGenerator, emailService,
+                    eventPublisher);
+
+            inOrder.verify(roomRepository).findById(ROOM_ID);
+            inOrder.verify(reservationRepository).existsByRoomIdAndTimeSlot(ROOM_ID, timeSlot);
+            inOrder.verify(codeGenerator).generate();
+            inOrder.verify(reservationRepository).save(any(Reservation.class));
+            inOrder.verify(emailService).sendConfirmation(any(ConfirmationEmail.class));
+            inOrder.verify(eventPublisher).publish(eq("RESERVATION_CREATED"), anyString());
         }
     }
 }
