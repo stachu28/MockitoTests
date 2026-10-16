@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Optional;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -160,6 +160,34 @@ public class ReservationServiceTest {
             inOrder.verify(reservationRepository).save(any(Reservation.class));
             inOrder.verify(emailService).sendConfirmation(any(ConfirmationEmail.class));
             inOrder.verify(eventPublisher).publish(eq("RESERVATION_CREATED"), anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("thenAnswer - dynamiczne generowanie wyników")
+    class ThenAnswerTests {
+
+        @Test
+        @DisplayName("Generowanie unikalnego kodu dla kolejnych rezerwacji")
+        void shouldGenerateUniqueCodesForSubsequentReservations() {
+            when(roomRepository.findById(ROOM_ID)).thenReturn(Optional.of(room));
+            when(reservationRepository.existsByRoomIdAndTimeSlot(ROOM_ID, timeSlot)).thenReturn(false);
+            when(codeGenerator.generate()).thenReturn("RES-CODE-1", "RES-CODE-2");
+            when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> {
+                Reservation reservation = invocation.getArgument(0);
+                reservation.setId(SAVED_ID);
+                return reservation;
+            });
+
+            reservationService.createReservation(ROOM_ID, ORGANIZER_EMAIL, timeSlot, ATTENDEES);
+            reservationService.createReservation(ROOM_ID, ORGANIZER_EMAIL, timeSlot, ATTENDEES);
+
+            ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+            verify(reservationRepository, times(2)).save(captor.capture());
+
+            assertThat(captor.getAllValues())
+                    .extracting(Reservation::getConfirmationCode)
+                    .containsExactly("RES-CODE-1", "RES-CODE-2");
         }
     }
 }
