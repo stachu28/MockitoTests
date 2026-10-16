@@ -207,5 +207,20 @@ public class ReservationServiceTest {
 
             verifyNoInteractions(reservationRepository, emailService, codeGenerator, eventPublisher);
         }
+
+        @Test
+        @DisplayName("Rzucanie wyjątku gdy za dużo uczestników")
+        void shouldThrowWhenTooManyAttendees() {
+            when(roomRepository.findById(ROOM_ID)).thenReturn(Optional.of(room));
+            int tooManyAttendees = room.getCapacity() + 1;
+
+            assertThatThrownBy(() -> reservationService.createReservation(ROOM_ID, ORGANIZER_EMAIL, timeSlot,
+                    tooManyAttendees))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage(String.format("Sala %s ma pojemność %d, żądano %d miejsc", room.getName(),
+                            room.getCapacity(), tooManyAttendees));
+
+            verifyNoInteractions(reservationRepository, emailService, codeGenerator, eventPublisher);
+        }
     }
 }
