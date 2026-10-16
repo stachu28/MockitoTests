@@ -222,5 +222,19 @@ public class ReservationServiceTest {
 
             verifyNoInteractions(reservationRepository, emailService, codeGenerator, eventPublisher);
         }
+
+        @Test
+        @DisplayName("Rzucanie wyjątku gdy termin zajęty")
+        void shouldThrowWhenTimeSlotAlreadyTaken() {
+            when(roomRepository.findById(ROOM_ID)).thenReturn(Optional.of(room));
+            when(reservationRepository.existsByRoomIdAndTimeSlot(ROOM_ID, timeSlot)).thenReturn(true);
+
+            assertThatThrownBy(() -> reservationService.createReservation(ROOM_ID, ORGANIZER_EMAIL, timeSlot, ATTENDEES))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Sala " + room.getName() + " jest już zarezerwowana w tym terminie");
+
+            verify(reservationRepository, never()).save(any(Reservation.class));
+            verifyNoInteractions(emailService, codeGenerator, eventPublisher);
+        }
     }
 }
