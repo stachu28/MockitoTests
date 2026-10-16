@@ -1,0 +1,374 @@
+# Praca domowa: Testowanie z Mockito
+
+## Ćwiczenie 7c: System rezerwacji (ArgumentCaptor, InOrder, thenAnswer)
+
+**Czego się nauczysz:** `ArgumentCaptor` do weryfikacji złożonych obiektów, `InOrder` do sprawdzania kolejności, `thenAnswer` do dynamicznego generowania wyników
+
+**Scenariusz:** System rezerwacji sal konferencyjnych. `ReservationService` waliduje dostępność, tworzy rezerwację z wygenerowanym kodem potwierdzenia, zapisuje ją, wysyła email i publikuje zdarzenie. Serwis ma 5 zależności i wszystkie są interfejsami bez implementacji. Musisz zweryfikować, co dokładnie przekazano do każdej z nich i w jakiej kolejności.
+
+**Twoje zadanie:** przepisz poniższy kod produkcyjny do projektu i napisz klasę testową `ReservationServiceTest`, która sprawdza metodę `createReservation()`. Nie zmieniaj kodu produkcyjnego.
+
+### Zależności (Maven)
+
+Do `pom.xml` dodaj w zakresie `test`:
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-junit-jupiter`
+- `org.assertj:assertj-core`
+
+### Struktura plików
+
+```
+src/
+├── main/java/com/example/reservation/
+│   ├── Room.java
+│   ├── TimeSlot.java
+│   ├── Reservation.java
+│   ├── ReservationStatus.java
+│   ├── ConfirmationEmail.java
+│   ├── RoomRepository.java
+│   ├── ReservationRepository.java
+│   ├── ReservationEmailService.java
+│   ├── ConfirmationCodeGenerator.java
+│   ├── EventPublisher.java
+│   └── ReservationService.java
+└── test/java/com/example/reservation/
+    └── ReservationServiceTest.java   <- to piszesz Ty
+```
+
+---
+
+### Room.java
+
+```java
+package com.example.reservation;
+
+public class Room {
+
+    private final String roomId;
+    private final String name;
+    private final int capacity;
+    private final boolean hasProjector;
+
+    public Room(String roomId, String name, int capacity, boolean hasProjector) {
+        this.roomId = roomId;
+        this.name = name;
+        this.capacity = capacity;
+        this.hasProjector = hasProjector;
+    }
+
+    public String getRoomId() { return roomId; }
+    public String getName() { return name; }
+    public int getCapacity() { return capacity; }
+    public boolean hasProjector() { return hasProjector; }
+}
+```
+
+---
+
+### TimeSlot.java
+
+```java
+package com.example.reservation;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+public class TimeSlot {
+
+    private final LocalDate date;
+    private final LocalTime startTime;
+    private final LocalTime endTime;
+
+    public TimeSlot(LocalDate date, LocalTime startTime, LocalTime endTime) {
+        this.date = date;
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
+
+    public LocalDate getDate() { return date; }
+    public LocalTime getStartTime() { return startTime; }
+    public LocalTime getEndTime() { return endTime; }
+}
+```
+
+---
+
+### ReservationStatus.java
+
+```java
+package com.example.reservation;
+
+public enum ReservationStatus {
+    PENDING,
+    CONFIRMED,
+    CANCELLED
+}
+```
+
+---
+
+### Reservation.java
+
+```java
+package com.example.reservation;
+
+import java.time.LocalDateTime;
+
+public class Reservation {
+
+    private Long id;
+    private String confirmationCode;
+    private String roomId;
+    private String organizerEmail;
+    private TimeSlot timeSlot;
+    private int attendees;
+    private ReservationStatus status;
+    private LocalDateTime createdAt;
+
+    public Reservation() {
+        this.status = ReservationStatus.PENDING;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    // Gettery
+    public Long getId() { return id; }
+    public String getConfirmationCode() { return confirmationCode; }
+    public String getRoomId() { return roomId; }
+    public String getOrganizerEmail() { return organizerEmail; }
+    public TimeSlot getTimeSlot() { return timeSlot; }
+    public int getAttendees() { return attendees; }
+    public ReservationStatus getStatus() { return status; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+
+    // Settery
+    public void setId(Long id) { this.id = id; }
+    public void setConfirmationCode(String code) { this.confirmationCode = code; }
+    public void setRoomId(String roomId) { this.roomId = roomId; }
+    public void setOrganizerEmail(String email) { this.organizerEmail = email; }
+    public void setTimeSlot(TimeSlot timeSlot) { this.timeSlot = timeSlot; }
+    public void setAttendees(int attendees) { this.attendees = attendees; }
+    public void setStatus(ReservationStatus status) { this.status = status; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+}
+```
+
+---
+
+### ConfirmationEmail.java
+
+```java
+package com.example.reservation;
+
+public class ConfirmationEmail {
+
+    private final String recipientEmail;
+    private final String subject;
+    private final String body;
+
+    public ConfirmationEmail(String recipientEmail, String subject, String body) {
+        this.recipientEmail = recipientEmail;
+        this.subject = subject;
+        this.body = body;
+    }
+
+    public String getRecipientEmail() { return recipientEmail; }
+    public String getSubject() { return subject; }
+    public String getBody() { return body; }
+}
+```
+
+---
+
+### RoomRepository.java
+
+```java
+package com.example.reservation;
+
+import java.util.Optional;
+
+public interface RoomRepository {
+
+    Optional<Room> findById(String roomId);
+}
+```
+
+---
+
+### ReservationRepository.java
+
+```java
+package com.example.reservation;
+
+public interface ReservationRepository {
+
+    Reservation save(Reservation reservation);
+
+    boolean existsByRoomIdAndTimeSlot(String roomId, TimeSlot timeSlot);
+}
+```
+
+---
+
+### ReservationEmailService.java
+
+```java
+package com.example.reservation;
+
+public interface ReservationEmailService {
+
+    void sendConfirmation(ConfirmationEmail email);
+}
+```
+
+---
+
+### ConfirmationCodeGenerator.java
+
+```java
+package com.example.reservation;
+
+public interface ConfirmationCodeGenerator {
+
+    /**
+     * Generuje unikalny kod potwierdzenia.
+     * Format: "RES-XXXXXXXX" (np. "RES-A1B2C3D4")
+     */
+    String generate();
+}
+```
+
+---
+
+### EventPublisher.java
+
+```java
+package com.example.reservation;
+
+public interface EventPublisher {
+
+    void publish(String eventType, String details);
+}
+```
+
+---
+
+### ReservationService.java (klasa, którą testujesz)
+
+```java
+package com.example.reservation;
+
+public class ReservationService {
+
+    private final RoomRepository roomRepository;
+    private final ReservationRepository reservationRepository;
+    private final ReservationEmailService emailService;
+    private final ConfirmationCodeGenerator codeGenerator;
+    private final EventPublisher eventPublisher;
+
+    public ReservationService(RoomRepository roomRepository,
+                              ReservationRepository reservationRepository,
+                              ReservationEmailService emailService,
+                              ConfirmationCodeGenerator codeGenerator,
+                              EventPublisher eventPublisher) {
+        this.roomRepository = roomRepository;
+        this.reservationRepository = reservationRepository;
+        this.emailService = emailService;
+        this.codeGenerator = codeGenerator;
+        this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * Tworzy rezerwację sali konferencyjnej.
+     *
+     * Kolejność operacji:
+     * 1. Walidacja (sala istnieje, pojemność wystarczająca, termin wolny)
+     * 2. Generowanie kodu potwierdzenia
+     * 3. Zapis rezerwacji do bazy
+     * 4. Wysyłka emaila z potwierdzeniem
+     * 5. Publikacja zdarzenia
+     */
+    public Reservation createReservation(String roomId, String organizerEmail,
+                                          TimeSlot timeSlot, int attendees) {
+        // 1. Walidacja - sala
+        Room room = roomRepository.findById(roomId)
+            .orElseThrow(() -> new IllegalArgumentException("Sala nie istnieje: " + roomId));
+
+        if (attendees > room.getCapacity()) {
+            throw new IllegalArgumentException(
+                String.format("Sala %s ma pojemność %d, żądano %d miejsc",
+                    room.getName(), room.getCapacity(), attendees));
+        }
+
+        // 2. Walidacja - dostępność terminu
+        if (reservationRepository.existsByRoomIdAndTimeSlot(roomId, timeSlot)) {
+            throw new IllegalStateException(
+                "Sala " + room.getName() + " jest już zarezerwowana w tym terminie");
+        }
+
+        // 3. Generuj kod potwierdzenia
+        String confirmationCode = codeGenerator.generate();
+
+        // 4. Utwórz i zapisz rezerwację
+        Reservation reservation = new Reservation();
+        reservation.setRoomId(roomId);
+        reservation.setOrganizerEmail(organizerEmail);
+        reservation.setTimeSlot(timeSlot);
+        reservation.setAttendees(attendees);
+        reservation.setConfirmationCode(confirmationCode);
+        reservation.setStatus(ReservationStatus.CONFIRMED);
+
+        Reservation saved = reservationRepository.save(reservation);
+
+        // 5. Wyślij email
+        String subject = "Potwierdzenie rezerwacji sali " + room.getName();
+        String body = String.format(
+            "Rezerwacja potwierdzona!\nSala: %s\nData: %s\nGodziny: %s - %s\nKod: %s",
+            room.getName(),
+            timeSlot.getDate(),
+            timeSlot.getStartTime(),
+            timeSlot.getEndTime(),
+            confirmationCode
+        );
+        emailService.sendConfirmation(new ConfirmationEmail(organizerEmail, subject, body));
+
+        // 6. Opublikuj zdarzenie
+        eventPublisher.publish("RESERVATION_CREATED",
+            "Rezerwacja " + confirmationCode + " dla sali " + room.getName());
+
+        return saved;
+    }
+}
+```
+
+---
+
+
+## Jakich testów oczekujemy
+
+Klasa `ReservationServiceTest` z `@ExtendWith(MockitoExtension.class)` i `@DisplayName("ReservationService - zaawansowane mockowanie")`. Wszystkie 5 zależności to mocki (`@Mock`), testowany obiekt to `ReservationService` (`@InjectMocks`). Captory możesz zadeklarować polami z `@Captor`.
+
+Testy pogrupuj w klasy zagnieżdżone `@Nested`:
+
+**ArgumentCaptor - weryfikacja zapisanych danych**
+1. Powinien zapisać rezerwację z poprawnymi danymi
+2. Powinien wysłać email z poprawną treścią
+3. Powinien opublikować zdarzenie z danymi rezerwacji
+
+**InOrder - weryfikacja kolejności operacji**
+4. Powinien wykonać operacje w odpowiedniej kolejności
+
+**thenAnswer - dynamiczne generowanie wyników**
+5. Powinien generować unikalne kody dla kolejnych rezerwacji
+
+**Walidacja - testy błędów**
+6. Powinien rzucić wyjątek gdy sala nie istnieje
+7. Powinien rzucić wyjątek gdy za dużo uczestników
+8. Powinien rzucić wyjątek gdy termin zajęty
+
+Wskazówki:
+- przygotowanie udanej rezerwacji powtarza się w kilku testach, więc wydziel je do metody pomocniczej, a salę i termin utwórz w `@BeforeEach`;
+- `save()` w mocku domyślnie zwraca `null`, więc użyj `thenAnswer`, żeby zwracał przekazaną rezerwację z nadanym id;
+- w teście kolejności sprawdź wszystkie 5 kroków: szukanie sali, sprawdzenie terminu, kod, zapis, email, zdarzenie;
+- w testach błędów sprawdź też, czego serwis **nie** wywołał (`verifyNoInteractions`, `never()`).
+
+---
