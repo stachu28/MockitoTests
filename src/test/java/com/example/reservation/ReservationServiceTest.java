@@ -13,6 +13,7 @@ import java.time.LocalTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -188,6 +189,23 @@ public class ReservationServiceTest {
             assertThat(captor.getAllValues())
                     .extracting(Reservation::getConfirmationCode)
                     .containsExactly("RES-CODE-1", "RES-CODE-2");
+        }
+    }
+
+    @Nested
+    @DisplayName("Walidacja - testy błędów")
+    class ValidationTests {
+
+        @Test
+        @DisplayName("Rzucanie wyjątku gdy sala nie istnieje")
+        void shouldThrowWhenRoomDoesNotExist() {
+            when(roomRepository.findById(ROOM_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> reservationService.createReservation(ROOM_ID, ORGANIZER_EMAIL, timeSlot, ATTENDEES))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Sala nie istnieje: " + ROOM_ID);
+
+            verifyNoInteractions(reservationRepository, emailService, codeGenerator, eventPublisher);
         }
     }
 }
