@@ -107,5 +107,28 @@ public class ReservationServiceTest {
             assertThat(captured.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
             assertThat(saved.getId()).isEqualTo(SAVED_ID);
         }
+
+        @Test
+        @DisplayName("Wysyłanie email-a z poprawną treścią")
+        void shouldSendEmailWithCorrectContent() {
+            String expectedSubject = "Potwierdzenie rezerwacji sali " + room.getName();
+            String expectedBody = String.format(
+                    "Rezerwacja potwierdzona!\nSala: %s\nData: %s\nGodziny: %s - %s\nKod: %s",
+                    room.getName(),
+                    timeSlot.getDate(),
+                    timeSlot.getStartTime(),
+                    timeSlot.getEndTime(),
+                    CONFIRMATION_CODE
+            );
+
+            createSuccessfulReservation();
+
+            verify(emailService).sendConfirmation(emailCaptor.capture());
+            ConfirmationEmail email = emailCaptor.getValue();
+
+            assertThat(email.getRecipientEmail()).isEqualTo(ORGANIZER_EMAIL);
+            assertThat(email.getSubject()).isEqualTo(expectedSubject);
+            assertThat(email.getBody()).isEqualTo(expectedBody);
+        }
     }
 }
