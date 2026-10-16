@@ -130,5 +130,19 @@ public class ReservationServiceTest {
             assertThat(email.getSubject()).isEqualTo(expectedSubject);
             assertThat(email.getBody()).isEqualTo(expectedBody);
         }
+
+        @Test
+        @DisplayName("Publikowanie zdarzenia z danymi rezerwacji")
+        void shouldPublishEventWithReservationData() {
+            String expectedType = "RESERVATION_CREATED";
+            String expectedDetails =
+                    "Rezerwacja " + CONFIRMATION_CODE + " dla sali " + room.getName();
+
+            createSuccessfulReservation();
+
+            verify(eventPublisher).publish(eventTypeCaptor.capture(), eventDetailsCaptor.capture());
+            assertThat(eventTypeCaptor.getValue()).isEqualTo(expectedType);
+            assertThat(eventDetailsCaptor.getValue()).isEqualTo(expectedDetails);
+        }
     }
 }
